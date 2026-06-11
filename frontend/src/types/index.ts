@@ -86,6 +86,7 @@ export interface Task {
   kanban_order: number;
   color: string;
   tags: string[];
+  photo_evidence: string[];
   duration_days?: number;
   pin_count?: number;
   created_at: string;
