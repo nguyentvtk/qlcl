@@ -4,9 +4,9 @@
  * Google Apps Script cho Google Spreadsheet
  * Tên file: "WA | NNN | Quản Lý Dự án, Công việc"
  * ============================================================
- * Tác giả: Site360 System
+ * Tác giả: n3n
  * Phiên bản: 1.0.0
- * Ngày tạo: 2025
+ * Ngày tạo: 06.2026
  * ============================================================
  */
 
