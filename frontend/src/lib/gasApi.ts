@@ -59,9 +59,37 @@ export function gasPost<T>(
   return gasCall<T>({ sheet, action, ...payload });
 }
 
-/** Login 360 — action 'login_360' của CPM5.0 */
-export function gasLogin<T>(email: string, password: string): Promise<GasResponse<T>> {
-  return gasCall<T>({ action: 'login_360', email, password });
+/** Login 360
+ *  Thử login_360 trước (cần GAS đã cập nhật);
+ *  Nếu GAS chưa có login_360, fallback sang login_tvgs (CPM5.0 gốc).
+ */
+export async function gasLogin<T>(email: string, password: string): Promise<GasResponse<T>> {
+  // Thử login_360 (có token session, không cần hợp đồng)
+  const r1 = await gasCall<T>({ action: 'login_360', email, password });
+  if (r1.status === 'success') return r1;
+  // Nếu GAS chưa có login_360 → fallback login_tvgs
+  if (r1.message?.includes("sheet=''") || r1.message?.includes('không hợp lệ')) {
+    const r2 = await gasCall<{ maSoDN?: string; tenDN?: string; email?: string; hoTen?: string; role?: string }>(
+      { action: 'login_tvgs', identifier: email, password }
+    );
+    if (r2.status === 'success' && r2.data) {
+      // Tạo session token phía frontend (không cần GAS xác thực lần sau)
+      const token = btoa(`${email}:${Date.now()}`).replace(/[^a-zA-Z0-9]/g, '').slice(0, 32);
+      const expiresAt = new Date(Date.now() + 8 * 3600 * 1000).toISOString();
+      const adapted = {
+        token,
+        email: r2.data.email ?? email,
+        tenDN: r2.data.tenDN ?? r2.data.hoTen ?? email,
+        maSoDN: r2.data.maSoDN ?? '',
+        vaiTro: 'Giám sát' as const,
+        duAn360: [],
+        expiresAt,
+      };
+      return { status: 'success', data: adapted as unknown as T, message: 'Đăng nhập thành công', timestamp: new Date().toISOString() };
+    }
+    return r2 as unknown as GasResponse<T>;
+  }
+  return r1;
 }
 
 /** Logout 360 */
