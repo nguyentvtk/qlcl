@@ -1,0 +1,45 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * { box-sizing: border-box; }
+  body {
+    font-family: 'Inter', system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+}
+
+/* Tuỳ chỉnh Leaflet popup */
+.leaflet-popup-content-wrapper {
+  @apply rounded-xl shadow-xl border border-gray-100 p-0 overflow-hidden;
+}
+.leaflet-popup-content { margin: 0; }
+.leaflet-popup-tip { display: none; }
+
+/* Tuỳ chỉnh Pannellum */
+.pnlm-container { border-radius: 0 !important; }
+.pnlm-hotspot-base {
+  width: 24px !important;
+  height: 24px !important;
+  border-radius: 50% !important;
+  border: 2.5px solid white !important;
+  cursor: pointer !important;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.4) !important;
+  transition: transform 0.15s !important;
+}
+.pnlm-hotspot-base:hover { transform: scale(1.3) !important; }
+
+/* Scrollbar tùy chỉnh */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: #f1f5f9; }
+::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 999px; }
+::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+/* Animation */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-in { animation: fadeIn 0.2s ease-out; }

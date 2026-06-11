@@ -1,0 +1,140 @@
+# ============================================================
+# SITE360 - Docker Compose
+# Khởi chạy: docker-compose up -d
+# Dừng:      docker-compose down
+# Reset DB:  docker-compose down -v  (xóa cả volume!)
+# ============================================================
+version: '3.9'
+
+services:
+  # ============================================================
+  # 1. PostgreSQL + PostGIS
+  # Dùng image postgis/postgis thay vì postgres thuần
+  # để có sẵn extension PostGIS
+  # ============================================================
+  db:
+    image: postgis/postgis:16-3.4-alpine
+    container_name: site360_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: site360
+      POSTGRES_USER: site360_user
+      # Trong production: dùng Docker Secret thay vì biến môi trường
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-StrongPassword123!}
+      # Timezone Việt Nam
+      TZ: Asia/Ho_Chi_Minh
+    volumes:
+      # Persist data khi restart container
+      - postgres_data:/var/lib/postgresql/data
+      # Tự động chạy schema.sql khi khởi tạo DB lần đầu
+      - ./database/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
+    ports:
+      # Chỉ expose port ra ngoài khi dev, trong production xóa dòng này
+      - "5432:5432"
+    networks:
+      - site360_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U site360_user -d site360"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # ============================================================
+  # 2. Node.js Backend API
+  # ============================================================
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: site360_backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy  # Chờ DB sẵn sàng mới khởi động
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      DB_HOST: db  # Tên service trong Docker network
+      DB_PORT: 5432
+      DB_NAME: site360
+      DB_USER: site360_user
+      DB_PASSWORD: ${DB_PASSWORD:-StrongPassword123!}
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
+      JWT_ACCESS_EXPIRES_IN: 15m
+      JWT_REFRESH_EXPIRES_IN: 7d
+      CORS_ORIGINS: ${CORS_ORIGINS:-https://yourdomain.com}
+      UPLOAD_DIR: /app/uploads
+      MAX_FILE_SIZE_MB: 100
+      TZ: Asia/Ho_Chi_Minh
+    volumes:
+      # Mount thư mục upload để persist ảnh
+      - uploads_data:/app/uploads
+    networks:
+      - site360_net
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ============================================================
+  # 3. React Frontend (build static files)
+  # ============================================================
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: site360_frontend
+    restart: unless-stopped
+    networks:
+      - site360_net
+
+  # ============================================================
+  # 4. Nginx - Reverse Proxy + HTTPS (TLS Termination)
+  # Nhận tất cả request từ bên ngoài và phân phối:
+  # - /api/* -> Backend Node.js
+  # - /* -> Frontend React static files
+  # - /uploads/* -> Serve static images
+  # ============================================================
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: site360_nginx
+    restart: unless-stopped
+    depends_on:
+      - backend
+      - frontend
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro  # Cert SSL (Let's Encrypt hoặc self-signed)
+      - uploads_data:/var/www/uploads:ro  # Nginx serve ảnh trực tiếp (hiệu quả hơn Node)
+      - nginx_logs:/var/log/nginx
+    networks:
+      - site360_net
+    healthcheck:
+      test: ["CMD", "nginx", "-t"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+
+# ============================================================
+# Volumes: dữ liệu persist khi container restart
+# ============================================================
+volumes:
+  postgres_data:
+    driver: local
+  uploads_data:
+    driver: local
+  nginx_logs:
+    driver: local
+
+# ============================================================
+# Network: isolated network cho các services
+# ============================================================
+networks:
+  site360_net:
+    driver: bridge
