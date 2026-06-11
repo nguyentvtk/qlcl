@@ -91,6 +91,7 @@ export interface AuthSession {
   token: string;
   email: string;
   tenDN: string;
+  maSoDN?: string;
   vaiTro: VaiTro360;
   duAn360: string[];
   expiresAt: string;

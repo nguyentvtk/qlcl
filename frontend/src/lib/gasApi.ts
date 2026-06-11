@@ -1,5 +1,6 @@
-// GAS HTTP client — dùng chung cho mọi sheet trong Google Spreadsheet
-// POST dùng Content-Type: text/plain để tránh CORS preflight với GAS Web App
+// GAS HTTP client — CPM5.0 API
+// doGet trả HTML → dùng POST cho TẤT CẢ requests (kể cả reads)
+// text/plain để tránh CORS preflight với GAS Web App
 
 const GAS_URL = import.meta.env.VITE_GAS_URL ?? '';
 
@@ -10,30 +11,46 @@ export type GasResponse<T = unknown> = {
   timestamp: string;
 };
 
-function getToken() {
+function getToken(): string | undefined {
   return localStorage.getItem('gas_token') ?? undefined;
 }
 
-export async function gasGet<T>(
+// ─── Internal POST helper ─────────────────────────────────────────────────────
+async function gasCall<T>(body: Record<string, unknown>): Promise<GasResponse<T>> {
+  if (!GAS_URL) throw new Error('VITE_GAS_URL chưa cấu hình trong .env');
+  const token = getToken();
+  if (token) body = { token, ...body };
+  const res = await fetch(GAS_URL, {
+    method: 'POST',
+    // text/plain tránh CORS preflight với GAS — body vẫn là JSON string
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const json = await res.json();
+  // Chuẩn hoá response: {status, data, message, timestamp}
+  if (typeof json === 'object' && 'status' in json) return json as GasResponse<T>;
+  // Fallback nếu CPM5.0 trả format khác
+  return { status: 'success', data: json as T, message: '', timestamp: new Date().toISOString() };
+}
+
+// ─── Public API ───────────────────────────────────────────────────────────────
+
+/** Đọc danh sách (list) hoặc một bản ghi (get) */
+export function gasGet<T>(
   sheet: string,
   action: string,
   params: Record<string, string | number | boolean | undefined> = {}
 ): Promise<GasResponse<T>> {
-  if (!GAS_URL) throw new Error('VITE_GAS_URL chưa cấu hình trong .env');
-  const url = new URL(GAS_URL);
-  url.searchParams.set('sheet', sheet);
-  url.searchParams.set('action', action);
-  const token = getToken();
-  if (token) url.searchParams.set('token', token);
+  const cleanParams: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(params)) {
-    if (v !== undefined && v !== '') url.searchParams.set(k, String(v));
+    if (v !== undefined && v !== '') cleanParams[k] = v;
   }
-  const res = await fetch(url.toString());
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return res.json();
+  return gasCall<T>({ sheet, action, ...cleanParams });
 }
 
-export async function gasPost<T>(
+/** Ghi (create/update/delete) hoặc action đặc biệt */
+export function gasPost<T>(
   sheet: string,
   action: string,
   payload: {
@@ -42,14 +59,21 @@ export async function gasPost<T>(
     params?: Record<string, unknown>;
   } = {}
 ): Promise<GasResponse<T>> {
-  if (!GAS_URL) throw new Error('VITE_GAS_URL chưa cấu hình trong .env');
+  return gasCall<T>({ sheet, action, ...payload });
+}
+
+/** Login 360 — dùng action 'login_360' của CPM5.0 */
+export function gasLogin<T>(email: string, password: string): Promise<GasResponse<T>> {
+  return gasCall<T>({ action: 'login_360', email, password });
+}
+
+/** Logout 360 */
+export function gasLogout(): Promise<GasResponse<null>> {
   const token = getToken();
-  const body = JSON.stringify({ sheet, action, token, ...payload });
-  const res = await fetch(GAS_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-    body,
-  });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return res.json();
+  return gasCall<null>({ action: 'logout_360', token: token ?? '' });
+}
+
+/** Batch load nhiều sheets cùng lúc */
+export function gasBatchList<T>(sheets: string[]): Promise<GasResponse<T>> {
+  return gasCall<T>({ action: 'batch_list', sheets });
 }

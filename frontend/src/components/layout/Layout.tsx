@@ -5,7 +5,7 @@ import {
   Menu, X, HardHat, ChevronDown, Bell,
 } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
-import { gasPost } from '../../lib/gasApi';
+import { gasLogout } from '../../lib/gasApi';
 
 const NAV = [
   { to: '/dashboard', icon: LayoutDashboard, label: 'Tổng quan' },
@@ -18,9 +18,7 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
   const [userMenu, setUserMenu] = useState(false);
 
   const handleLogout = async () => {
-    try {
-      await gasPost('auth360', 'logout', { params: { token: session?.token } });
-    } catch (_) { /* bỏ qua lỗi network */ }
+    try { await gasLogout(); } catch (_) { /* bỏ qua lỗi network */ }
     clear();
     navigate('/login');
   };

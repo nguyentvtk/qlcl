@@ -3,10 +3,10 @@ import {
   Camera, AlertTriangle, FolderOpen, TrendingUp,
   RefreshCw, Search, SlidersHorizontal,
 } from 'lucide-react';
-import { gasGet } from '../lib/gasApi';
+import { gasGet, gasBatchList } from '../lib/gasApi';
 import { useAuthStore } from '../store/authStore';
 import { ProjectCard } from '../components/ProjectCard';
-import type { GasProject, GasStats } from '../types/gas';
+import type { GasProject, GasPhoto, GasStats } from '../types/gas';
 
 interface StatsCardProps {
   label: string;
@@ -43,38 +43,32 @@ export const DashboardPage: React.FC = () => {
     setLoading(true);
     setError('');
     try {
-      // Lấy danh sách dự án
-      const res = await gasGet<GasProject[]>('duan', 'list');
-      if (res.status !== 'success' || !res.data) throw new Error(res.message);
+      // Batch load dự án + ảnh 360 cùng lúc (giảm số request GAS)
+      const batchRes = await gasBatchList<Record<string, unknown[]>>(['duan', '360']);
 
-      let list = res.data;
+      if (batchRes.status !== 'success' || !batchRes.data) throw new Error(batchRes.message);
+      const batchData = batchRes.data as Record<string, unknown[]>;
 
-      // Lọc theo quyền: Quản lý xem tất cả, còn lại chỉ xem dự án được phân công
+      let list: GasProject[] = (batchData['duan'] ?? []) as GasProject[];
+      const allPhotos: GasPhoto[] = (batchData['360'] ?? []) as GasPhoto[];
+
+      // Lọc theo quyền
       if (session?.vaiTro !== 'Quản lý' && session?.duAn360?.length) {
         list = list.filter(p => session.duAn360.includes(p.maDA));
       }
 
       setProjects(list);
 
-      // Lấy thống kê ảnh 360 tổng hợp (không lọc theo dự án)
-      const statsRes = await gasGet<GasStats>('pano360', 'stats');
-      if (statsRes.status === 'success' && statsRes.data) {
-        setTotalStats(statsRes.data);
-      }
-
-      // Lấy số lượng ảnh từng dự án song song
+      // Đếm ảnh từng dự án từ batch data
       const counts: Record<string, number> = {};
-      await Promise.all(
-        list.map(async (p) => {
-          try {
-            const r = await gasGet<GasStats>('pano360', 'stats', { maDA: p.maDA });
-            counts[p.maDA] = r.data?.tongAnh ?? 0;
-          } catch (_) {
-            counts[p.maDA] = 0;
-          }
-        })
-      );
+      allPhotos.forEach((p: GasPhoto) => {
+        if (p.maDA) counts[p.maDA] = (counts[p.maDA] ?? 0) + 1;
+      });
       setPhotoCounts(counts);
+
+      // Tổng thống kê từ dữ liệu batch
+      const totalSuCo = allPhotos.reduce((s, p) => s + Number(p.pinsSuCo ?? 0), 0);
+      setTotalStats({ tongAnh: allPhotos.length, pinsSuCo: totalSuCo });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Lỗi tải dữ liệu');
     } finally {

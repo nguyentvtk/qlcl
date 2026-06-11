@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { HardHat, Mail, Lock, Eye, EyeOff, AlertCircle, Loader2 } from 'lucide-react';
-import { gasPost } from '../lib/gasApi';
+import { gasLogin } from '../lib/gasApi';
 import { useAuthStore } from '../store/authStore';
 import type { AuthSession } from '../types/gas';
 
@@ -29,9 +29,7 @@ export const LoginPage: React.FC = () => {
     setLoading(true);
     setError('');
     try {
-      const res = await gasPost<AuthSession>('auth360', 'login', {
-        params: { email: email.trim().toLowerCase(), password: password.trim() },
-      });
+      const res = await gasLogin<AuthSession>(email.trim().toLowerCase(), password.trim());
       if (res.status === 'success' && res.data) {
         setSession(res.data);
         const from = (location.state as { from?: { pathname: string } })?.from?.pathname ?? '/dashboard';
